@@ -1,75 +1,176 @@
 // Variables
 const form = document.getElementById("task-form");
-const input = document.getElementById("task-input");
+const taskInput = document.getElementById("task-input");
 const taskList = document.getElementById("task-list");
 const priority = document.getElementById("task-priority");
 const searchInput = document.getElementById("search");
+const filterPriority = document.getElementById("filter-priority");
+const filterStatus = document.getElementById("filter-status");
+const sortAlpha = document.getElementById("sort-alpha");
+const sortButton = document.getElementById("sort-tasks");
+const completeAllBtn = document.getElementById("complete-all");
+const deleteCompletedBtn = document.getElementById("delete-completed");
+
+const statsTotal = document.getElementById("stats-total");
+const statsPending = document.getElementById("stats-pending");
+const statsCompleted = document.getElementById("stats-completed");
 
 let tasks = [];
 
-// Cargar tareas guardadas al iniciar
-document.addEventListener("DOMContentLoaded", function() {
-    const savedTasks = localStorage.getItem("tasks");
+// Guardar tareas
+function saveTasks() {
+    localStorage.setItem("tasks", JSON.stringify(tasks));
+}
 
-    if(savedTasks){
+// Actualizar estadísticas
+function updateStats() {
+    const total = tasks.length;
+    const pending = tasks.filter(t => !t.completed).length;
+    const completed = tasks.filter(t => t.completed).length;
+    statsTotal.textContent = "Total: " + total;
+    statsPending.textContent = "Pendientes: " + pending;
+    statsCompleted.textContent = "Completadas: " + completed;
+}
+
+// Cargar tareas
+function loadTasks() {
+    const savedTasks = localStorage.getItem("tasks");
+    if (savedTasks) {
         tasks = JSON.parse(savedTasks);
-        tasks.forEach(task => createTask(task, false)); // false: no duplicar en storage
+        tasks.forEach(task => createTask(task, false));
+        updateStats();
     }
-});
+}
+
+document.addEventListener("DOMContentLoaded", loadTasks);
 
 // Añadir tarea
-form.addEventListener("submit", function(e){
+form.addEventListener("submit", e => {
     e.preventDefault();
-
-    const taskText = input.value.trim();
-    if(taskText === "") return;
-
-    const task = {
-        text: taskText,
-        priority: priority.value
-    };
-
-    createTask(task); // guarda automáticamente en tasks y storage
-    input.value = "";
+    const text = taskInput.value.trim();
+    if (!text) return;
+    const task = { text, priority: priority.value, completed: false };
+    createTask(task);
+    taskInput.value = "";
 });
 
-// Crear tarea en el DOM
-function createTask(task, saveToStorage = true){
+// Crear tarea
+function createTask(task, saveToStorage = true) {
     const li = document.createElement("li");
-    li.classList.add(task.priority);
+    li.className = "flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-gray-100 dark:bg-gray-700 p-3 rounded shadow";
+    if(task.completed) li.classList.add("opacity-50");
+
+    const container = document.createElement("div");
+    container.className = "flex flex-col break-words max-w-full";
 
     const span = document.createElement("span");
-    span.textContent = task.text + " (" + task.priority + ")";
+    span.textContent = task.text;
+    span.className = "text-gray-800 dark:text-white font-medium break-words";
+
+    const label = document.createElement("span");
+    label.textContent = task.priority;
+    let color = task.priority === "alta" ? "bg-red-500" :
+                task.priority === "media" ? "bg-yellow-400 text-black" : "bg-green-500";
+    label.className = "text-xs text-white px-2 py-1 rounded w-fit mt-1 " + color;
+
+    container.appendChild(span);
+    container.appendChild(label);
+
+    const buttons = document.createElement("div");
+    buttons.className = "flex gap-2 flex-wrap justify-start";
+
+    const completeBtn = document.createElement("button");
+    completeBtn.textContent = "✔";
+    completeBtn.className = "bg-blue-500 text-white px-3 py-2 text-sm rounded hover:bg-blue-600";
+    completeBtn.addEventListener("click", () => {
+        task.completed = !task.completed;
+        li.classList.toggle("opacity-50");
+        saveTasks();
+        updateStats();
+    });
+
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "Editar";
+    editBtn.className = "bg-yellow-500 text-white px-3 py-2 text-sm rounded hover:bg-yellow-600";
+    editBtn.addEventListener("click", () => {
+        const newText = prompt("Editar tarea:", task.text);
+        if (newText && newText.trim() !== "") {
+            task.text = newText.trim();
+            span.textContent = task.text;
+            saveTasks();
+            updateStats();
+        }
+    });
 
     const deleteBtn = document.createElement("button");
     deleteBtn.textContent = "Eliminar";
-
-    deleteBtn.addEventListener("click", function(){
+    deleteBtn.className = "bg-red-500 text-white px-3 py-2 text-sm rounded hover:bg-red-600";
+    deleteBtn.addEventListener("click", () => {
         li.remove();
-        tasks = tasks.filter(t => t.text !== task.text);
-        localStorage.setItem("tasks", JSON.stringify(tasks));
+        tasks = tasks.filter(t => t !== task);
+        saveTasks();
+        updateStats();
     });
 
-    li.appendChild(span);
-    li.appendChild(deleteBtn);
+    buttons.appendChild(completeBtn);
+    buttons.appendChild(editBtn);
+    buttons.appendChild(deleteBtn);
+
+    li.appendChild(container);
+    li.appendChild(buttons);
     taskList.appendChild(li);
 
     if(saveToStorage){
         tasks.push(task);
-        localStorage.setItem("tasks", JSON.stringify(tasks));
+        saveTasks();
+        updateStats();
     }
 }
 
-// Búsqueda de tareas
-searchInput.addEventListener("input", function() {
-    const searchTerm = searchInput.value.trim().toLowerCase();
+// Filtros y orden alfabético
+searchInput.addEventListener("input", applyFilters);
+filterPriority.addEventListener("change", applyFilters);
+filterStatus.addEventListener("change", applyFilters);
+sortAlpha.addEventListener("change", applyFilters);
 
-    // Limpiar la lista
-    taskList.innerHTML = "";
-
-    // Filtrar tareas
-    const filteredTasks = tasks.filter(task => task.text.toLowerCase().includes(searchTerm));
-
-    // Renderizar tareas filtradas
-    filteredTasks.forEach(task => createTask(task, false));
+sortButton.addEventListener("click", () => {
+    const order = { alta:1, media:2, baja:3 };
+    tasks.sort((a,b)=>order[a.priority]-order[b.priority]);
+    applyFilters();
 });
+
+completeAllBtn.addEventListener("click", () => {
+    tasks.forEach(t => t.completed=true);
+    saveTasks();
+    applyFilters();
+    updateStats();
+});
+
+deleteCompletedBtn.addEventListener("click", () => {
+    tasks = tasks.filter(t => !t.completed);
+    saveTasks();
+    applyFilters();
+    updateStats();
+});
+
+function applyFilters() {
+    const term = searchInput.value.toLowerCase();
+    const status = filterStatus.value;
+    const prio = filterPriority.value;
+    const alpha = sortAlpha.value;
+
+    let filtered = tasks.filter(task => {
+        let ok = true;
+        if(term) ok = task.text.toLowerCase().includes(term);
+        if(ok && status !== "all") ok = status==="pending" ? !task.completed : task.completed;
+        if(ok && prio !== "all") ok = task.priority===prio;
+        return ok;
+    });
+
+    if(alpha==="asc") filtered.sort((a,b)=>a.text.localeCompare(b.text));
+    if(alpha==="desc") filtered.sort((a,b)=>b.text.localeCompare(a.text));
+
+    taskList.innerHTML="";
+    filtered.forEach(task => createTask(task,false));
+    updateStats();
+}
